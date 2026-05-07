@@ -208,7 +208,7 @@ export default function TournamentDetailPage() {
             {rounds.length} rondas
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {tournament.status !== "setup" && (
             <Link
               href={`/leaderboard/${id}`}
@@ -397,77 +397,79 @@ function GameRow({
   const t1Name = `${playerName(game.team1_player1)} & ${playerName(game.team1_player2)}`;
   const t2Name = `${playerName(game.team2_player1)} & ${playerName(game.team2_player2)}`;
 
+  const actionButton = editing ? (
+    <div className="flex gap-1">
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="rounded bg-primary px-3 py-1 text-xs font-medium text-background hover:bg-primary-hover disabled:opacity-40"
+      >
+        {saving ? "..." : "OK"}
+      </button>
+      <button
+        onClick={() => setEditing(false)}
+        className="rounded px-3 py-1 text-xs text-muted hover:text-foreground"
+      >
+        X
+      </button>
+    </div>
+  ) : (
+    <button
+      onClick={() => {
+        setS1(game.team1_score?.toString() ?? "");
+        setS2(game.team2_score?.toString() ?? "");
+        setEditing(true);
+      }}
+      className="rounded border border-border px-3 py-1 text-xs text-muted hover:text-foreground"
+    >
+      {game.status === "completed" ? "Editar" : "Anotar"}
+    </button>
+  );
+
+  const scoreDisplay = editing ? (
+    <div className="flex items-center gap-1">
+      <input
+        type="number"
+        min={0}
+        value={s1}
+        onChange={(e) => setS1(e.target.value)}
+        className="w-14 rounded border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none"
+      />
+      <span className="text-muted">-</span>
+      <input
+        type="number"
+        min={0}
+        value={s2}
+        onChange={(e) => setS2(e.target.value)}
+        className="w-14 rounded border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none"
+      />
+    </div>
+  ) : (
+    <span
+      className={`rounded px-2 py-0.5 text-sm font-mono ${
+        game.status === "completed"
+          ? "bg-primary/10 text-primary"
+          : "bg-surface-hover text-muted"
+      }`}
+    >
+      {game.team1_score ?? "–"} - {game.team2_score ?? "–"}
+    </span>
+  );
+
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <span className="mr-auto text-xs text-muted">
-        Mesa {game.table_number}
-      </span>
+    <div className="px-4 py-3">
+      {/* Header: table number + action */}
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs text-muted">Mesa {game.table_number}</span>
+        {actionButton}
+      </div>
 
-      {/* Team 1 */}
-      <span className="text-sm font-medium">{t1Name}</span>
-
-      {editing ? (
-        <>
-          <input
-            type="number"
-            min={0}
-            value={s1}
-            onChange={(e) => setS1(e.target.value)}
-            className="w-16 rounded border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none"
-          />
-          <span className="text-muted">-</span>
-          <input
-            type="number"
-            min={0}
-            value={s2}
-            onChange={(e) => setS2(e.target.value)}
-            className="w-16 rounded border border-border bg-background px-2 py-1 text-center text-sm focus:border-primary focus:outline-none"
-          />
-        </>
-      ) : (
-        <span
-          className={`rounded px-2 py-0.5 text-sm font-mono ${
-            game.status === "completed"
-              ? "bg-primary/10 text-primary"
-              : "bg-surface-hover text-muted"
-          }`}
-        >
-          {game.team1_score ?? "–"} - {game.team2_score ?? "–"}
-        </span>
-      )}
-
-      {/* Team 2 */}
-      <span className="text-sm font-medium">{t2Name}</span>
-
-      {/* Actions */}
-      {editing ? (
-        <div className="flex gap-1">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded bg-primary px-3 py-1 text-xs font-medium text-background hover:bg-primary-hover disabled:opacity-40"
-          >
-            {saving ? "..." : "OK"}
-          </button>
-          <button
-            onClick={() => setEditing(false)}
-            className="rounded px-3 py-1 text-xs text-muted hover:text-foreground"
-          >
-            X
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => {
-            setS1(game.team1_score?.toString() ?? "");
-            setS2(game.team2_score?.toString() ?? "");
-            setEditing(true);
-          }}
-          className="rounded border border-border px-3 py-1 text-xs text-muted hover:text-foreground"
-        >
-          {game.status === "completed" ? "Editar" : "Anotar"}
-        </button>
-      )}
+      {/* Teams + score */}
+      <div className="flex items-center gap-2 text-sm sm:gap-3">
+        <span className="min-w-0 flex-1 text-right font-medium">{t1Name}</span>
+        {scoreDisplay}
+        <span className="min-w-0 flex-1 font-medium">{t2Name}</span>
+      </div>
     </div>
   );
 }

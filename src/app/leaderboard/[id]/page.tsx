@@ -222,18 +222,18 @@ export default function LeaderboardPage() {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-border">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="w-full min-w-[500px] text-sm">
           <thead className="bg-surface text-left text-muted">
             <tr>
-              <th className="px-4 py-3 text-center font-medium">#</th>
-              <th className="px-4 py-3 font-medium">Jugador</th>
-              <th className="px-4 py-3 text-center font-medium">PJ</th>
-              <th className="px-4 py-3 text-center font-medium">G</th>
-              <th className="px-4 py-3 text-center font-medium">P</th>
-              <th className="px-4 py-3 text-center font-medium">PF</th>
-              <th className="px-4 py-3 text-center font-medium">PC</th>
-              <th className="px-4 py-3 text-center font-medium">DIF</th>
+              <th className="px-3 py-3 text-center font-medium sm:px-4">#</th>
+              <th className="px-3 py-3 font-medium sm:px-4">Jugador</th>
+              <th className="px-3 py-3 text-center font-medium sm:px-4">PJ</th>
+              <th className="px-3 py-3 text-center font-medium sm:px-4">G</th>
+              <th className="px-3 py-3 text-center font-medium sm:px-4">P</th>
+              <th className="px-3 py-3 text-center font-medium sm:px-4">PF</th>
+              <th className="px-3 py-3 text-center font-medium sm:px-4">PC</th>
+              <th className="px-3 py-3 text-center font-medium sm:px-4">DIF</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -242,10 +242,10 @@ export default function LeaderboardPage() {
                 key={s.player.id}
                 className={`hover:bg-surface-hover ${!s.player.active ? "opacity-50" : ""} ${s.player.id === myPlayerId ? "bg-accent/10 ring-1 ring-inset ring-accent/30" : i < 2 ? "bg-primary/5" : ""}`}
               >
-                <td className="px-4 py-3 text-center font-bold">
+                <td className="px-3 py-3 text-center font-bold sm:px-4">
                   {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
                 </td>
-                <td className="px-4 py-3 font-medium">
+                <td className="whitespace-nowrap px-3 py-3 font-medium sm:px-4">
                   {s.player.name}
                   {!s.player.active && (
                     <span className="ml-1.5 text-xs text-danger">(inactivo)</span>
@@ -254,15 +254,15 @@ export default function LeaderboardPage() {
                     <span className="ml-1.5 text-xs text-accent">(tú)</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-center">{s.played}</td>
-                <td className="px-4 py-3 text-center font-semibold text-primary">
+                <td className="px-3 py-3 text-center sm:px-4">{s.played}</td>
+                <td className="px-3 py-3 text-center font-semibold text-primary sm:px-4">
                   {s.wins}
                 </td>
-                <td className="px-4 py-3 text-center text-danger">{s.losses}</td>
-                <td className="px-4 py-3 text-center">{s.pf}</td>
-                <td className="px-4 py-3 text-center">{s.pa}</td>
+                <td className="px-3 py-3 text-center text-danger sm:px-4">{s.losses}</td>
+                <td className="px-3 py-3 text-center sm:px-4">{s.pf}</td>
+                <td className="px-3 py-3 text-center sm:px-4">{s.pa}</td>
                 <td
-                  className={`px-4 py-3 text-center font-mono font-semibold ${
+                  className={`px-3 py-3 text-center font-mono font-semibold sm:px-4 ${
                     s.diff > 0
                       ? "text-primary"
                       : s.diff < 0

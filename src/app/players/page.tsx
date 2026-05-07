@@ -126,36 +126,36 @@ export default function UsersPage() {
       {users.length === 0 ? (
         <p className="text-muted">No hay usuarios registrados.</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full min-w-[500px] text-sm">
             <thead className="bg-surface text-left text-muted">
               <tr>
-                <th className="px-4 py-3 font-medium">Nombre</th>
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Rol</th>
-                <th className="px-4 py-3 font-medium">Registrado</th>
+                <th className="px-3 py-3 font-medium sm:px-4">Nombre</th>
+                <th className="px-3 py-3 font-medium sm:px-4">Email</th>
+                <th className="px-3 py-3 font-medium sm:px-4">Rol</th>
+                <th className="px-3 py-3 font-medium sm:px-4">Registrado</th>
                 {isAdmin && (
-                  <th className="px-4 py-3 font-medium">Acciones</th>
+                  <th className="px-3 py-3 font-medium sm:px-4">Acciones</th>
                 )}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {activeUsers.map((u) => (
                 <tr key={u.id} className="hover:bg-surface-hover">
-                  <td className="px-4 py-3 font-medium">{u.name}</td>
-                  <td className="px-4 py-3 text-muted">{u.email}</td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-3 py-3 font-medium sm:px-4">{u.name}</td>
+                  <td className="px-3 py-3 text-muted sm:px-4">{u.email}</td>
+                  <td className="px-3 py-3 sm:px-4">
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleColor[u.role] ?? "text-muted"}`}
                     >
                       {roleLabel[u.role] ?? u.role}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-muted">
+                  <td className="whitespace-nowrap px-3 py-3 text-muted sm:px-4">
                     {new Date(u.created_at).toLocaleDateString("es-VE")}
                   </td>
                   {isAdmin && (
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 sm:px-4">
                       {u.role !== "admin" && (
                         <button
                           onClick={() => handleDeactivate(u.id)}
@@ -171,25 +171,25 @@ export default function UsersPage() {
               ))}
               {inactiveUsers.map((u) => (
                 <tr key={u.id} className="opacity-50 hover:bg-surface-hover">
-                  <td className="px-4 py-3 font-medium">
+                  <td className="whitespace-nowrap px-3 py-3 font-medium sm:px-4">
                     {u.name}
                     <span className="ml-2 rounded-full bg-danger/15 px-2 py-0.5 text-xs font-medium text-danger">
                       Inactivo
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-muted">{u.email}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 text-muted sm:px-4">{u.email}</td>
+                  <td className="px-3 py-3 sm:px-4">
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleColor[u.role] ?? "text-muted"}`}
                     >
                       {roleLabel[u.role] ?? u.role}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-muted">
+                  <td className="whitespace-nowrap px-3 py-3 text-muted sm:px-4">
                     {new Date(u.created_at).toLocaleDateString("es-VE")}
                   </td>
                   {isAdmin && (
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 sm:px-4">
                       <button
                         onClick={() => handleReactivate(u.id)}
                         disabled={loadingId === u.id}
