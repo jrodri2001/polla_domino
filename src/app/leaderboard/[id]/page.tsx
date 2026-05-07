@@ -77,19 +77,27 @@ export default function LeaderboardPage() {
       }
     }
 
-    fetchAll();
+    let channel: ReturnType<typeof sb.channel> | null = null;
 
-    const channel = sb
-      .channel(`leaderboard-${id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "games" },
-        () => fetchAll(),
-      )
-      .subscribe();
+    async function init() {
+      // Ensure auth token is available before subscribing to Realtime
+      await sb.auth.getUser();
+      await fetchAll();
+
+      channel = sb
+        .channel(`leaderboard-${id}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "games" },
+          () => fetchAll(),
+        )
+        .subscribe();
+    }
+
+    init();
 
     return () => {
-      sb.removeChannel(channel);
+      if (channel) sb.removeChannel(channel);
     };
   }, [id]);
 
