@@ -1,8 +1,12 @@
+export type UserRole = "admin" | "player";
+
 export interface Player {
   id: string;
   name: string;
   email: string;
   active: boolean;
+  auth_id: string | null;
+  role: UserRole;
   created_at: string;
 }
 

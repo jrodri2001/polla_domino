@@ -59,7 +59,7 @@ export default function TournamentDetailPage() {
       if (pIds.length > 0) {
         const { data: pData } = await sb
           .from("players")
-          .select("*")
+          .select("id, name, email, active, auth_id, role, created_at")
           .in("id", pIds);
         const map = new Map<string, Player>();
         for (const p of pData ?? []) map.set(p.id, p);

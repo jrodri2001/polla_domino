@@ -4,8 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Tournament, Player, Game } from "@/lib/types";
-import type { UserRole } from "@/lib/auth";
+import type { Tournament, Player, Game, UserRole } from "@/lib/types";
 
 interface Standing {
   player: Player;
@@ -32,13 +31,13 @@ export default function LeaderboardPage() {
       // Check user role for conditional UI
       const { data: { user } } = await sb.auth.getUser();
       if (user) {
-        const { data: profile } = await sb
-          .from("profiles")
-          .select("role, player_id")
-          .eq("id", user.id)
+        const { data: me } = await sb
+          .from("players")
+          .select("id, role")
+          .eq("auth_id", user.id)
           .single();
-        setUserRole((profile?.role as UserRole) ?? "player");
-        setMyPlayerId(profile?.player_id ?? null);
+        setUserRole((me?.role as UserRole) ?? "player");
+        setMyPlayerId(me?.id ?? null);
       }
 
       const { data: t } = await sb
@@ -57,7 +56,7 @@ export default function LeaderboardPage() {
       if (pIds.length > 0) {
         const { data: pData } = await sb
           .from("players")
-          .select("*")
+          .select("id, name, email, active, auth_id, role, created_at")
           .in("id", pIds);
         const map = new Map<string, Player>();
         for (const p of pData ?? []) map.set(p.id, p);

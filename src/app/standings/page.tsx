@@ -29,8 +29,8 @@ export default async function StandingsPage() {
       await Promise.all([
         supabase
           .from("players")
-          .select("*, profiles!player_id(id)")
-          .not("profiles", "is", null),
+          .select("*")
+          .not("auth_id", "is", null),
         supabase
           .from("games")
           .select("*, round:rounds(tournament_id)")

@@ -251,12 +251,12 @@ export async function deactivatePlayer(playerId: string) {
   const supabase = await createClient();
 
   // Prevent deactivation of admin users
-  const { data: profile } = await supabase
-    .from("profiles")
+  const { data: player } = await supabase
+    .from("players")
     .select("role")
-    .eq("player_id", playerId)
+    .eq("id", playerId)
     .single();
-  if (profile?.role === "admin") {
+  if (player?.role === "admin") {
     return { error: "No se puede desactivar a un administrador" };
   }
 

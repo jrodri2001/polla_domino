@@ -28,13 +28,13 @@ export async function proxy(request: NextRequest) {
 
   // Check admin routes
   if (ADMIN_ROUTES.some((r) => pathname.startsWith(r))) {
-    const { data: profile } = await supabase
-      .from("profiles")
+    const { data: player } = await supabase
+      .from("players")
       .select("role")
-      .eq("id", user.id)
+      .eq("auth_id", user.id)
       .single();
 
-    if (profile?.role !== "admin") {
+    if (player?.role !== "admin") {
       return NextResponse.redirect(new URL("/", request.url));
     }
   }

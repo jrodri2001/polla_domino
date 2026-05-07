@@ -47,8 +47,8 @@ export default function EditTournamentPage() {
         .eq("tournament_id", id),
       supabase
         .from("players")
-        .select("id, name, email, profiles!player_id(id), tournament_players(count)")
-        .not("profiles", "is", null)
+        .select("id, name, email, tournament_players(count)")
+        .not("auth_id", "is", null)
         .eq("active", true)
         .order("name"),
     ]).then(([tpResult, pResult]) => {

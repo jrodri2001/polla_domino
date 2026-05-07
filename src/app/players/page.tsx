@@ -38,18 +38,18 @@ export default function UsersPage() {
         data: { user },
       } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase
-          .from("profiles")
+        const { data: me } = await supabase
+          .from("players")
           .select("role")
-          .eq("id", user.id)
+          .eq("auth_id", user.id)
           .single();
-        setUserRole((profile?.role as UserRole) ?? "player");
+        setUserRole((me?.role as UserRole) ?? "player");
       }
 
       const { data, error } = await supabase
         .from("players")
-        .select("id, name, email, active, created_at, profiles!player_id(role)")
-        .not("profiles", "is", null)
+        .select("id, name, email, active, role, created_at")
+        .not("auth_id", "is", null)
         .order("name");
 
       if (error) {
@@ -64,9 +64,7 @@ export default function UsersPage() {
           email: p.email,
           active: p.active,
           created_at: p.created_at,
-          role:
-            (p.profiles as unknown as { role: string }[])?.[0]?.role ??
-            "player",
+          role: p.role ?? "player",
         })),
       );
     } catch {
