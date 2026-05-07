@@ -77,27 +77,29 @@ export default function LeaderboardPage() {
       }
     }
 
-    let channel: ReturnType<typeof sb.channel> | null = null;
+    const channelName = `leaderboard-${id}`;
+    // Remove any stale channel from a previous mount (singleton client persists channels)
+    const existing = sb.getChannels().find((c) => c.topic === `realtime:${channelName}`);
+    if (existing) sb.removeChannel(existing);
+
+    const channel = sb
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "games" },
+        () => fetchAll(),
+      );
 
     async function init() {
-      // Ensure auth token is available before subscribing to Realtime
       await sb.auth.getUser();
       await fetchAll();
-
-      channel = sb
-        .channel(`leaderboard-${id}`)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "games" },
-          () => fetchAll(),
-        )
-        .subscribe();
+      channel.subscribe();
     }
 
     init();
 
     return () => {
-      if (channel) sb.removeChannel(channel);
+      sb.removeChannel(channel);
     };
   }, [id]);
 
