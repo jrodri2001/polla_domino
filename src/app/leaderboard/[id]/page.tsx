@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Tournament, Player, Game, UserRole } from "@/lib/types";
+import type { Tournament, Player, Game, Bye, Round, UserRole } from "@/lib/types";
 
 interface Standing {
   player: Player;
@@ -20,7 +20,9 @@ export default function LeaderboardPage() {
   const { id } = useParams<{ id: string }>();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [players, setPlayers] = useState<Map<string, Player>>(new Map());
+  const [rounds, setRounds] = useState<Round[]>([]);
   const [games, setGames] = useState<Game[]>([]);
+  const [byes, setByes] = useState<Bye[]>([]);
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
 
@@ -65,15 +67,18 @@ export default function LeaderboardPage() {
 
       const { data: rData } = await sb
         .from("rounds")
-        .select("id")
-        .eq("tournament_id", id);
+        .select("id, tournament_id, round_number")
+        .eq("tournament_id", id)
+        .order("round_number");
+      setRounds(rData ?? []);
       if (rData && rData.length > 0) {
         const roundIds = rData.map((r) => r.id);
-        const { data: gData } = await sb
-          .from("games")
-          .select("*")
-          .in("round_id", roundIds);
+        const [{ data: gData }, { data: bData }] = await Promise.all([
+          sb.from("games").select("*").in("round_id", roundIds),
+          sb.from("byes").select("*").in("round_id", roundIds),
+        ]);
         setGames(gData ?? []);
+        setByes(bData ?? []);
       }
     }
 
@@ -143,6 +148,35 @@ export default function LeaderboardPage() {
     arr.sort((a, b) => b.wins - a.wins || b.diff - a.diff || b.pf - a.pf);
     return arr;
   }, [players, games]);
+
+  // ── Group games by round ───────────────────────────────────────────────
+  const roundMap = useMemo(() => {
+    const map = new Map<string, { round: Round; games: Game[]; byes: Bye[] }>();
+    for (const r of rounds) {
+      map.set(r.id, { round: r, games: [], byes: [] });
+    }
+    for (const g of games) {
+      map.get(g.round_id)?.games.push(g);
+    }
+    for (const b of byes) {
+      map.get(b.round_id)?.byes.push(b);
+    }
+    return [...map.values()].sort((a, b) => a.round.round_number - b.round.round_number);
+  }, [rounds, games, byes]);
+
+  const completedRounds = roundMap.filter((r) =>
+    r.games.length > 0 && r.games.every((g) => g.status === "completed"),
+  );
+  const pendingRounds = roundMap.filter((r) =>
+    r.games.some((g) => g.status !== "completed"),
+  );
+
+  const totalGames = games.length;
+  const completedGames = games.filter((g) => g.status === "completed").length;
+
+  function playerName(pid: string) {
+    return players.get(pid)?.name ?? "?";
+  }
 
   if (!tournament) return <p className="text-muted">Cargando...</p>;
 
@@ -243,6 +277,103 @@ export default function LeaderboardPage() {
           </tbody>
         </table>
       </div>
+
+      {/* ── Progress ──────────────────────────────────────────────── */}
+      {totalGames > 0 && (
+        <div>
+          <div className="mb-1 flex justify-between text-xs text-muted">
+            <span>Progreso</span>
+            <span>{completedGames}/{totalGames} juegos completados</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-surface">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${(completedGames / totalGames) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Pending games ─────────────────────────────────────────── */}
+      {pendingRounds.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold">Juegos Pendientes</h2>
+          {pendingRounds.map(({ round, games: rGames, byes: rByes }) => (
+            <div key={round.id} className="rounded-lg border border-border bg-surface">
+              <div className="border-b border-border px-4 py-2.5">
+                <h3 className="text-sm font-semibold">Ronda {round.round_number}</h3>
+                {rByes.length > 0 && (
+                  <p className="text-xs text-muted">
+                    Descansan: {rByes.map((b) => playerName(b.player_id)).join(", ")}
+                  </p>
+                )}
+              </div>
+              <div className="divide-y divide-border">
+                {rGames.map((g) => {
+                  const done = g.status === "completed";
+                  const t1Won = done && g.team1_score != null && g.team2_score != null && g.team1_score > g.team2_score;
+                  const t2Won = done && g.team1_score != null && g.team2_score != null && g.team2_score > g.team1_score;
+                  return (
+                    <div key={g.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                      <span className={`flex-1 text-right ${t1Won ? "font-semibold text-primary" : ""}`}>
+                        {playerName(g.team1_player1)} & {playerName(g.team1_player2)}
+                      </span>
+                      {done ? (
+                        <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
+                          {g.team1_score} - {g.team2_score}
+                        </span>
+                      ) : (
+                        <span className="rounded bg-surface-hover px-2 py-0.5 text-xs text-muted">vs</span>
+                      )}
+                      <span className={`flex-1 ${t2Won ? "font-semibold text-primary" : ""}`}>
+                        {playerName(g.team2_player1)} & {playerName(g.team2_player2)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Completed results ─────────────────────────────────────── */}
+      {completedRounds.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold">Resultados</h2>
+          {[...completedRounds].reverse().map(({ round, games: rGames, byes: rByes }) => (
+            <div key={round.id} className="rounded-lg border border-border bg-surface">
+              <div className="border-b border-border px-4 py-2.5">
+                <h3 className="text-sm font-semibold">Ronda {round.round_number}</h3>
+                {rByes.length > 0 && (
+                  <p className="text-xs text-muted">
+                    Descansaron: {rByes.map((b) => playerName(b.player_id)).join(", ")}
+                  </p>
+                )}
+              </div>
+              <div className="divide-y divide-border">
+                {rGames.map((g) => {
+                  const t1Won = g.team1_score != null && g.team2_score != null && g.team1_score > g.team2_score;
+                  const t2Won = g.team1_score != null && g.team2_score != null && g.team2_score > g.team1_score;
+                  return (
+                    <div key={g.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                      <span className={`flex-1 text-right ${t1Won ? "font-semibold text-primary" : ""}`}>
+                        {playerName(g.team1_player1)} & {playerName(g.team1_player2)}
+                      </span>
+                      <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
+                        {g.team1_score} - {g.team2_score}
+                      </span>
+                      <span className={`flex-1 ${t2Won ? "font-semibold text-primary" : ""}`}>
+                        {playerName(g.team2_player1)} & {playerName(g.team2_player2)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
