@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { headers } from "next/headers";
 
-export type AuthActionState = { error?: string; message?: string; success?: boolean } | null;
+export type AuthActionState = { error?: string; message?: string; success?: boolean; email?: string } | null;
 
 export async function signUp(
   _prev: AuthActionState,
@@ -14,9 +14,14 @@ export async function signUp(
   const name = (formData.get("name") as string)?.trim();
   const email = (formData.get("email") as string)?.trim().toLowerCase();
   const password = formData.get("password") as string;
+  const confirmPassword = formData.get("confirm_password") as string;
 
-  if (!name || !email || !password) {
+  if (!name || !email || !password || !confirmPassword) {
     return { error: "Todos los campos son obligatorios" };
+  }
+
+  if (password !== confirmPassword) {
+    return { error: "Las contraseñas no coinciden" };
   }
 
   if (password.length < 8) {
@@ -51,6 +56,7 @@ export async function signUp(
   if (!data.session) {
     return {
       success: true,
+      email,
       message: "Cuenta creada. Revisa tu email para confirmar tu cuenta antes de iniciar sesión.",
     };
   }

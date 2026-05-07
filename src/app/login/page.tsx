@@ -1,10 +1,13 @@
 "use client";
 
 import { useActionState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signIn, signInWithGoogle, type AuthActionState } from "@/lib/actions/auth";
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const prefillEmail = searchParams.get("email") ?? "";
   const [state, formAction, pending] = useActionState<AuthActionState, FormData>(
     signIn,
     null,
@@ -31,6 +34,7 @@ export default function LoginPage() {
               type="email"
               required
               autoComplete="email"
+              defaultValue={prefillEmail}
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none"
               placeholder="tu@email.com"
             />
