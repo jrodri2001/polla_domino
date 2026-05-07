@@ -1,11 +1,19 @@
 "use client";
 
-import { useActionState } from "react";
+import { Suspense, useActionState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signIn, signInWithGoogle, type AuthActionState } from "@/lib/actions/auth";
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const searchParams = useSearchParams();
   const prefillEmail = searchParams.get("email") ?? "";
   const [state, formAction, pending] = useActionState<AuthActionState, FormData>(
