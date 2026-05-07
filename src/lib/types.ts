@@ -2,6 +2,7 @@ export interface Player {
   id: string;
   name: string;
   email: string;
+  active: boolean;
   created_at: string;
 }
 

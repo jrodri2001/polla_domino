@@ -1,57 +1,121 @@
-import { createClient } from "@/lib/supabase/server";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useEffect, useState, useCallback } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { deactivatePlayer, reactivatePlayer } from "@/lib/actions";
+import type { UserRole } from "@/lib/auth";
 
 interface RegisteredUser {
   id: string;
   name: string;
   email: string;
   role: string;
+  active: boolean;
   created_at: string;
 }
 
-export default async function UsersPage() {
-  let users: RegisteredUser[] = [];
-  let dbError = "";
+const roleLabel: Record<string, string> = {
+  admin: "Admin",
+  player: "Jugador",
+};
+const roleColor: Record<string, string> = {
+  admin: "bg-primary/20 text-primary",
+  player: "bg-accent/20 text-accent",
+};
 
-  try {
-    const supabase = await createClient();
+export default function UsersPage() {
+  const [users, setUsers] = useState<RegisteredUser[]>([]);
+  const [dbError, setDbError] = useState("");
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
-    // Query players that are linked to a profile (registered users)
-    const { data, error } = await supabase
-      .from("players")
-      .select("id, name, email, created_at, profiles!player_id(role)")
-      .not("profiles", "is", null)
-      .order("name");
+  const fetchUsers = useCallback(async () => {
+    try {
+      const supabase = createClient();
 
-    if (error) dbError = error.message;
+      // Check current user role
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+        setUserRole((profile?.role as UserRole) ?? "player");
+      }
 
-    users = (data ?? []).map((p) => ({
-      id: p.id,
-      name: p.name,
-      email: p.email,
-      created_at: p.created_at,
-      role: (p.profiles as unknown as { role: string }[])?.[0]?.role ?? "player",
-    }));
-  } catch {
-    dbError = "No se pudo conectar a Supabase.";
+      const { data, error } = await supabase
+        .from("players")
+        .select("id, name, email, active, created_at, profiles!player_id(role)")
+        .not("profiles", "is", null)
+        .order("name");
+
+      if (error) {
+        setDbError(error.message);
+        return;
+      }
+
+      setUsers(
+        (data ?? []).map((p) => ({
+          id: p.id,
+          name: p.name,
+          email: p.email,
+          active: p.active,
+          created_at: p.created_at,
+          role:
+            (p.profiles as unknown as { role: string }[])?.[0]?.role ??
+            "player",
+        })),
+      );
+    } catch {
+      setDbError("No se pudo conectar a Supabase.");
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  async function handleDeactivate(playerId: string) {
+    if (loadingId) return;
+    if (!confirm("¿Estás seguro de que deseas eliminar este usuario? Su historial se mantendrá.")) return;
+    setLoadingId(playerId);
+    const res = await deactivatePlayer(playerId);
+    if (res.error) {
+      setLoadingId(null);
+      alert(res.error);
+    } else {
+      await fetchUsers();
+      setLoadingId(null);
+    }
   }
 
-  const roleLabel: Record<string, string> = {
-    admin: "Admin",
-    player: "Jugador",
-  };
-  const roleColor: Record<string, string> = {
-    admin: "bg-primary/20 text-primary",
-    player: "bg-accent/20 text-accent",
-  };
+  async function handleReactivate(playerId: string) {
+    if (loadingId) return;
+    setLoadingId(playerId);
+    const res = await reactivatePlayer(playerId);
+    if (res.error) {
+      setLoadingId(null);
+      alert(res.error);
+    } else {
+      await fetchUsers();
+      setLoadingId(null);
+    }
+  }
+
+  const isAdmin = userRole === "admin";
+  const activeUsers = users.filter((u) => u.active);
+  const inactiveUsers = users.filter((u) => !u.active);
 
   return (
     <div className="space-y-8">
       <div className="space-y-1">
         <h1 className="text-2xl font-bold">Usuarios Registrados</h1>
         <p className="text-sm text-muted">
-          Los jugadores se registran creando una cuenta. Aquí puedes ver todos los usuarios del sistema.
+          Los jugadores se registran creando una cuenta. Aquí puedes ver todos
+          los usuarios del sistema.
         </p>
       </div>
 
@@ -72,10 +136,13 @@ export default async function UsersPage() {
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Rol</th>
                 <th className="px-4 py-3 font-medium">Registrado</th>
+                {isAdmin && (
+                  <th className="px-4 py-3 font-medium">Acciones</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {users.map((u) => (
+              {activeUsers.map((u) => (
                 <tr key={u.id} className="hover:bg-surface-hover">
                   <td className="px-4 py-3 font-medium">{u.name}</td>
                   <td className="px-4 py-3 text-muted">{u.email}</td>
@@ -89,6 +156,51 @@ export default async function UsersPage() {
                   <td className="px-4 py-3 text-muted">
                     {new Date(u.created_at).toLocaleDateString("es-VE")}
                   </td>
+                  {isAdmin && (
+                    <td className="px-4 py-3">
+                      {u.role !== "admin" && (
+                        <button
+                          onClick={() => handleDeactivate(u.id)}
+                          disabled={loadingId === u.id}
+                          className="rounded-md px-2.5 py-1 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-40"
+                        >
+                          {loadingId === u.id ? "…" : "Eliminar"}
+                        </button>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {inactiveUsers.map((u) => (
+                <tr key={u.id} className="opacity-50 hover:bg-surface-hover">
+                  <td className="px-4 py-3 font-medium">
+                    {u.name}
+                    <span className="ml-2 rounded-full bg-danger/15 px-2 py-0.5 text-xs font-medium text-danger">
+                      Inactivo
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{u.email}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleColor[u.role] ?? "text-muted"}`}
+                    >
+                      {roleLabel[u.role] ?? u.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-muted">
+                    {new Date(u.created_at).toLocaleDateString("es-VE")}
+                  </td>
+                  {isAdmin && (
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => handleReactivate(u.id)}
+                        disabled={loadingId === u.id}
+                        className="rounded-md px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-40"
+                      >
+                        {loadingId === u.id ? "…" : "Reactivar"}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

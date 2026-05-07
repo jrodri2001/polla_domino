@@ -243,6 +243,48 @@ export async function updateTournament(
   return { success: true };
 }
 
+// ── Players ──────────────────────────────────────────────────────────────
+
+export async function deactivatePlayer(playerId: string) {
+  await requireAdmin();
+  if (!playerId) return { error: "ID de jugador es obligatorio" };
+  const supabase = await createClient();
+
+  // Prevent deactivation of admin users
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("player_id", playerId)
+    .single();
+  if (profile?.role === "admin") {
+    return { error: "No se puede desactivar a un administrador" };
+  }
+
+  const { error } = await supabase
+    .from("players")
+    .update({ active: false })
+    .eq("id", playerId);
+
+  if (error) return { error: error.message };
+  revalidatePath("/players");
+  return { success: true };
+}
+
+export async function reactivatePlayer(playerId: string) {
+  await requireAdmin();
+  if (!playerId) return { error: "ID de jugador es obligatorio" };
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("players")
+    .update({ active: true })
+    .eq("id", playerId);
+
+  if (error) return { error: error.message };
+  revalidatePath("/players");
+  return { success: true };
+}
+
 export async function completeTournament(tournamentId: string) {
   await requireAdmin();
   const supabase = await createClient();

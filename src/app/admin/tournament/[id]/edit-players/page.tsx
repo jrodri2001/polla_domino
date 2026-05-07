@@ -39,32 +39,34 @@ export default function EditTournamentPage() {
         }
       });
 
-    // Fetch current tournament players to pre-select
-    supabase
-      .from("tournament_players")
-      .select("player_id")
-      .eq("tournament_id", id)
-      .then(({ data }) => {
-        setSelected(new Set((data ?? []).map((r) => r.player_id)));
-      });
+    // Fetch tournament players and active players in parallel, then intersect
+    Promise.all([
+      supabase
+        .from("tournament_players")
+        .select("player_id")
+        .eq("tournament_id", id),
+      supabase
+        .from("players")
+        .select("id, name, email, profiles!player_id(id), tournament_players(count)")
+        .not("profiles", "is", null)
+        .eq("active", true)
+        .order("name"),
+    ]).then(([tpResult, pResult]) => {
+      const mapped: PlayerData[] = (pResult.data ?? []).map((p) => ({
+        id: p.id as string,
+        name: (p.name as string) ?? "",
+        email: (p.email as string) ?? "",
+        tournamentCount:
+          (p.tournament_players as unknown as { count: number }[])?.[0]
+            ?.count ?? 0,
+      }));
+      setPlayers(mapped);
 
-    // Fetch all registered players
-    supabase
-      .from("players")
-      .select("id, name, email, profiles!player_id(id), tournament_players(count)")
-      .not("profiles", "is", null)
-      .order("name")
-      .then(({ data }) => {
-        const mapped: PlayerData[] = (data ?? []).map((p) => ({
-          id: p.id as string,
-          name: (p.name as string) ?? "",
-          email: (p.email as string) ?? "",
-          tournamentCount:
-            (p.tournament_players as unknown as { count: number }[])?.[0]
-              ?.count ?? 0,
-        }));
-        setPlayers(mapped);
-      });
+      // Only pre-select players that are still active (in the loaded pool)
+      const activeIds = new Set(mapped.map((p) => p.id));
+      const tpIds = (tpResult.data ?? []).map((r) => r.player_id);
+      setSelected(new Set(tpIds.filter((pid) => activeIds.has(pid))));
+    });
   }, [id]);
 
   const toggle = useCallback((pid: string) => {

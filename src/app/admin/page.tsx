@@ -26,6 +26,7 @@ export default function NewTournamentPage() {
       .from("players")
       .select("id, name, email, profiles!player_id(id), tournament_players(count)")
       .not("profiles", "is", null)
+      .eq("active", true)
       .order("name")
       .then(({ data }) => {
         const mapped: PlayerData[] = (data ?? []).map((p) => ({

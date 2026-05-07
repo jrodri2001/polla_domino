@@ -169,7 +169,7 @@ export default async function StandingsPage() {
               {standings.map((s, i) => (
                 <tr
                   key={s.player.id}
-                  className={`hover:bg-surface-hover ${s.player.id === myPlayerId ? "bg-accent/10 ring-1 ring-inset ring-accent/30" : i < 3 ? "bg-primary/5" : ""}`}
+                  className={`hover:bg-surface-hover ${!s.player.active ? "opacity-50" : ""} ${s.player.id === myPlayerId ? "bg-accent/10 ring-1 ring-inset ring-accent/30" : i < 3 ? "bg-primary/5" : ""}`}
                 >
                   <td className="px-4 py-3 text-center font-bold">
                     {i === 0
@@ -182,6 +182,9 @@ export default async function StandingsPage() {
                   </td>
                   <td className="px-4 py-3 font-medium">
                     {s.player.name}
+                    {!s.player.active && (
+                      <span className="ml-1.5 text-xs text-danger">(inactivo)</span>
+                    )}
                     {s.player.id === myPlayerId && (
                       <span className="ml-1.5 text-xs text-accent">(tú)</span>
                     )}
