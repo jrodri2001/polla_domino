@@ -84,7 +84,7 @@ export async function signIn(
 
 export async function signInWithGoogle() {
   const supabase = await createClient();
-  const origin = (await headers()).get("origin") ?? "http://localhost:3000";
+  const origin = process.env.SITE_URL || (await headers()).get("origin") || "http://localhost:3000";
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
@@ -111,7 +111,7 @@ export async function forgotPassword(
     return { error: "Email es obligatorio" };
   }
 
-  const origin = (await headers()).get("origin") ?? "http://localhost:3000";
+  const origin = process.env.SITE_URL || (await headers()).get("origin") || "http://localhost:3000";
 
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${origin}/auth/callback?next=/reset-password`,
