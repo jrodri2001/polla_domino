@@ -100,6 +100,65 @@ export async function signInWithGoogle() {
   redirect(data.url);
 }
 
+export async function forgotPassword(
+  _prev: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const supabase = await createClient();
+  const email = (formData.get("email") as string)?.trim().toLowerCase();
+
+  if (!email) {
+    return { error: "Email es obligatorio" };
+  }
+
+  const origin = (await headers()).get("origin") ?? "http://localhost:3000";
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/auth/callback?next=/reset-password`,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return {
+    success: true,
+    message: "Si existe una cuenta con ese email, recibirás un enlace para restablecer tu contraseña.",
+  };
+}
+
+export async function resetPassword(
+  _prev: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const supabase = await createClient();
+  const password = formData.get("password") as string;
+
+  if (!password) {
+    return { error: "La contraseña es obligatoria" };
+  }
+  if (password.length < 8) {
+    return { error: "La contraseña debe tener al menos 8 caracteres" };
+  }
+  if (!/[a-zA-Z]/.test(password)) {
+    return { error: "La contraseña debe contener al menos una letra" };
+  }
+  if (!/[0-9]/.test(password)) {
+    return { error: "La contraseña debe contener al menos un número" };
+  }
+  if (!/[^a-zA-Z0-9]/.test(password)) {
+    return { error: "La contraseña debe contener al menos un carácter especial" };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  redirect("/");
+}
+
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();

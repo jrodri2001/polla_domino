@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createProxyClient } from "@/lib/supabase/proxy";
 
-const PUBLIC_ROUTES = ["/login", "/signup", "/auth/callback"];
+const PUBLIC_ROUTES = ["/login", "/signup", "/auth/callback", "/forgot-password", "/reset-password"];
 const ADMIN_ROUTES = ["/admin", "/players"];
 
 export async function proxy(request: NextRequest) {

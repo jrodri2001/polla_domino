@@ -51,6 +51,12 @@ export default function LoginPage() {
             />
           </div>
 
+          <div className="text-right">
+            <Link href="/forgot-password" className="text-xs text-muted hover:text-primary">
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </div>
+
           {state?.error && (
             <p className="text-sm text-danger">{state.error}</p>
           )}
