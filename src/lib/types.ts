@@ -35,11 +35,21 @@ export interface Game {
   team1_score: number | null;
   team2_score: number | null;
   status: "pending" | "in_progress" | "completed";
+  salidor_player_id: string | null;
 }
 
 export interface Bye {
   round_id: string;
   player_id: string;
+}
+
+export interface Hand {
+  id: string;
+  game_id: string;
+  hand_number: number;
+  team1_points: number;
+  team2_points: number;
+  created_at: string;
 }
 
 export interface RoundWithGames extends Round {

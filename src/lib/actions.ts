@@ -133,6 +133,9 @@ export async function updateGameScore(
   await requireAdmin();
   const supabase = await createClient();
 
+  // Clear any existing hands — switching to direct final score
+  await supabase.from("hands").delete().eq("game_id", gameId);
+
   const { error } = await supabase
     .from("games")
     .update({
@@ -140,6 +143,19 @@ export async function updateGameScore(
       team2_score: team2Score,
       status: "completed",
     })
+    .eq("id", gameId);
+
+  if (error) return { error: error.message };
+  return { success: true };
+}
+
+export async function resetGameScore(gameId: string) {
+  await requireAdmin();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("games")
+    .update({ team1_score: null, team2_score: null, status: "pending" })
     .eq("id", gameId);
 
   if (error) return { error: error.message };
@@ -282,6 +298,188 @@ export async function reactivatePlayer(playerId: string) {
 
   if (error) return { error: error.message };
   revalidatePath("/players");
+  return { success: true };
+}
+
+// ── Hand-by-hand scoring ────────────────────────────────────────────────────
+
+const WINNING_SCORE = 100;
+
+export async function addHandScore(
+  gameId: string,
+  team1Points: number,
+  team2Points: number,
+) {
+  await requireAdmin();
+  if (team1Points < 0 || team2Points < 0) return { error: "Los puntos no pueden ser negativos" };
+  if (team1Points > 0 && team2Points > 0) return { error: "Solo un equipo puede anotar por mano" };
+
+  const supabase = await createClient();
+
+  // Get current max hand number
+  const { data: lastHand } = await supabase
+    .from("hands")
+    .select("hand_number")
+    .eq("game_id", gameId)
+    .order("hand_number", { ascending: false })
+    .limit(1)
+    .single();
+
+  const nextNumber = (lastHand?.hand_number ?? 0) + 1;
+
+  // Insert the new hand
+  const { error: hErr } = await supabase
+    .from("hands")
+    .insert({
+      game_id: gameId,
+      hand_number: nextNumber,
+      team1_points: team1Points,
+      team2_points: team2Points,
+    });
+  if (hErr) return { error: hErr.message };
+
+  // Recalculate totals from all hands
+  const { data: allHands } = await supabase
+    .from("hands")
+    .select("team1_points, team2_points")
+    .eq("game_id", gameId);
+
+  let total1 = 0;
+  let total2 = 0;
+  for (const h of allHands ?? []) {
+    total1 += h.team1_points;
+    total2 += h.team2_points;
+  }
+
+  // Determine new game status
+  const isComplete = total1 >= WINNING_SCORE || total2 >= WINNING_SCORE;
+
+  const { error: gErr } = await supabase
+    .from("games")
+    .update({
+      team1_score: total1,
+      team2_score: total2,
+      status: isComplete ? "completed" : "in_progress",
+    })
+    .eq("id", gameId);
+
+  if (gErr) return { error: gErr.message };
+  return { success: true, completed: isComplete };
+}
+
+export async function updateHandScore(
+  handId: string,
+  team1Points: number,
+  team2Points: number,
+) {
+  await requireAdmin();
+  if (team1Points < 0 || team2Points < 0) return { error: "Los puntos no pueden ser negativos" };
+  if (team1Points > 0 && team2Points > 0) return { error: "Solo un equipo puede anotar por mano" };
+
+  const supabase = await createClient();
+
+  // Get the game_id from this hand
+  const { data: hand } = await supabase
+    .from("hands")
+    .select("game_id")
+    .eq("id", handId)
+    .single();
+  if (!hand) return { error: "Mano no encontrada" };
+
+  // Update the hand
+  const { error: hErr } = await supabase
+    .from("hands")
+    .update({ team1_points: team1Points, team2_points: team2Points })
+    .eq("id", handId);
+  if (hErr) return { error: hErr.message };
+
+  // Recalculate totals
+  const { data: allHands } = await supabase
+    .from("hands")
+    .select("team1_points, team2_points")
+    .eq("game_id", hand.game_id);
+
+  let total1 = 0;
+  let total2 = 0;
+  for (const h of allHands ?? []) {
+    total1 += h.team1_points;
+    total2 += h.team2_points;
+  }
+
+  const isComplete = total1 >= WINNING_SCORE || total2 >= WINNING_SCORE;
+
+  const { error: gErr } = await supabase
+    .from("games")
+    .update({
+      team1_score: total1,
+      team2_score: total2,
+      status: isComplete ? "completed" : "in_progress",
+    })
+    .eq("id", hand.game_id);
+
+  if (gErr) return { error: gErr.message };
+  return { success: true };
+}
+
+export async function removeLastHand(gameId: string) {
+  await requireAdmin();
+  const supabase = await createClient();
+
+  // Find the last hand
+  const { data: lastHand } = await supabase
+    .from("hands")
+    .select("id")
+    .eq("game_id", gameId)
+    .order("hand_number", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!lastHand) return { error: "No hay manos para deshacer" };
+
+  // Delete it
+  const { error: dErr } = await supabase
+    .from("hands")
+    .delete()
+    .eq("id", lastHand.id);
+  if (dErr) return { error: dErr.message };
+
+  // Recalculate totals
+  const { data: remaining } = await supabase
+    .from("hands")
+    .select("team1_points, team2_points")
+    .eq("game_id", gameId);
+
+  let total1 = 0;
+  let total2 = 0;
+  for (const h of remaining ?? []) {
+    total1 += h.team1_points;
+    total2 += h.team2_points;
+  }
+
+  const hasHands = (remaining ?? []).length > 0;
+  const newStatus = hasHands ? "in_progress" : "pending";
+
+  const { error: gErr } = await supabase
+    .from("games")
+    .update({
+      team1_score: hasHands ? total1 : null,
+      team2_score: hasHands ? total2 : null,
+      status: newStatus,
+    })
+    .eq("id", gameId);
+
+  if (gErr) return { error: gErr.message };
+  return { success: true };
+}
+
+export async function setSalidor(gameId: string, playerId: string | null) {
+  await requireAdmin();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("games")
+    .update({ salidor_player_id: playerId })
+    .eq("id", gameId);
+  if (error) return { error: error.message };
   return { success: true };
 }
 

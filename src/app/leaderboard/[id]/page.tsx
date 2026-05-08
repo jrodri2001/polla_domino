@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Tournament, Player, Game, Bye, Round, UserRole } from "@/lib/types";
+import type { Tournament, Player, Game, Bye, Round, UserRole, Hand } from "@/lib/types";
 
 interface Standing {
   player: Player;
@@ -23,23 +23,28 @@ export default function LeaderboardPage() {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [byes, setByes] = useState<Bye[]>([]);
+  const [handsMap, setHandsMap] = useState<Map<string, Hand[]>>(new Map());
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
 
   useEffect(() => {
     const sb = createClient();
+    let authDone = false;
 
     async function fetchAll() {
-      // Check user role for conditional UI
-      const { data: { user } } = await sb.auth.getUser();
-      if (user) {
-        const { data: me } = await sb
-          .from("players")
-          .select("id, role")
-          .eq("auth_id", user.id)
-          .single();
-        setUserRole((me?.role as UserRole) ?? "player");
-        setMyPlayerId(me?.id ?? null);
+      // Check user role once — skip on realtime re-fetches
+      if (!authDone) {
+        const { data: { user } } = await sb.auth.getUser();
+        if (user) {
+          const { data: me } = await sb
+            .from("players")
+            .select("id, role")
+            .eq("auth_id", user.id)
+            .single();
+          setUserRole((me?.role as UserRole) ?? "player");
+          setMyPlayerId(me?.id ?? null);
+        }
+        authDone = true;
       }
 
       const { data: t } = await sb
@@ -79,6 +84,26 @@ export default function LeaderboardPage() {
         ]);
         setGames(gData ?? []);
         setByes(bData ?? []);
+
+        // Fetch hands for all games
+        const allGames = gData ?? [];
+        if (allGames.length > 0) {
+          const gameIds = allGames.map((g) => g.id);
+          const { data: hData } = await sb
+            .from("hands")
+            .select("*")
+            .in("game_id", gameIds)
+            .order("hand_number");
+          const hMap = new Map<string, Hand[]>();
+          for (const h of hData ?? []) {
+            const arr = hMap.get(h.game_id) ?? [];
+            arr.push(h);
+            hMap.set(h.game_id, arr);
+          }
+          setHandsMap(hMap);
+        } else {
+          setHandsMap(new Map());
+        }
       }
     }
 
@@ -93,15 +118,15 @@ export default function LeaderboardPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "games" },
         () => fetchAll(),
-      );
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "hands" },
+        () => fetchAll(),
+      )
+      .subscribe();
 
-    async function init() {
-      await sb.auth.getUser();
-      await fetchAll();
-      channel.subscribe();
-    }
-
-    init();
+    fetchAll();
 
     return () => {
       sb.removeChannel(channel);
@@ -309,28 +334,14 @@ export default function LeaderboardPage() {
                 )}
               </div>
               <div className="divide-y divide-border">
-                {rGames.map((g) => {
-                  const done = g.status === "completed";
-                  const t1Won = done && g.team1_score != null && g.team2_score != null && g.team1_score > g.team2_score;
-                  const t2Won = done && g.team1_score != null && g.team2_score != null && g.team2_score > g.team1_score;
-                  return (
-                    <div key={g.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                      <span className={`flex-1 text-right ${t1Won ? "font-semibold text-primary" : ""}`}>
-                        {playerName(g.team1_player1)} & {playerName(g.team1_player2)}
-                      </span>
-                      {done ? (
-                        <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
-                          {g.team1_score} - {g.team2_score}
-                        </span>
-                      ) : (
-                        <span className="rounded bg-surface-hover px-2 py-0.5 text-xs text-muted">vs</span>
-                      )}
-                      <span className={`flex-1 ${t2Won ? "font-semibold text-primary" : ""}`}>
-                        {playerName(g.team2_player1)} & {playerName(g.team2_player2)}
-                      </span>
-                    </div>
-                  );
-                })}
+                {rGames.map((g) => (
+                  <LeaderboardGameRow
+                    key={g.id}
+                    game={g}
+                    hands={handsMap.get(g.id) ?? []}
+                    playerName={playerName}
+                  />
+                ))}
               </div>
             </div>
           ))}
@@ -352,26 +363,128 @@ export default function LeaderboardPage() {
                 )}
               </div>
               <div className="divide-y divide-border">
-                {rGames.map((g) => {
-                  const t1Won = g.team1_score != null && g.team2_score != null && g.team1_score > g.team2_score;
-                  const t2Won = g.team1_score != null && g.team2_score != null && g.team2_score > g.team1_score;
-                  return (
-                    <div key={g.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
-                      <span className={`flex-1 text-right ${t1Won ? "font-semibold text-primary" : ""}`}>
-                        {playerName(g.team1_player1)} & {playerName(g.team1_player2)}
-                      </span>
-                      <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold text-primary">
-                        {g.team1_score} - {g.team2_score}
-                      </span>
-                      <span className={`flex-1 ${t2Won ? "font-semibold text-primary" : ""}`}>
-                        {playerName(g.team2_player1)} & {playerName(g.team2_player2)}
-                      </span>
-                    </div>
-                  );
-                })}
+                {rGames.map((g) => (
+                  <LeaderboardGameRow
+                    key={g.id}
+                    game={g}
+                    hands={handsMap.get(g.id) ?? []}
+                    playerName={playerName}
+                  />
+                ))}
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Game row for player view (mirrors admin GameRow, read-only) ─────────────
+
+function LeaderboardGameRow({
+  game,
+  hands,
+  playerName,
+}: {
+  game: Game;
+  hands: Hand[];
+  playerName: (id: string) => string;
+}) {
+  const [expanded, setExpanded] = useState(game.status === "in_progress");
+  const done = game.status === "completed";
+  const hasHands = hands.length > 0;
+  const total1 = game.team1_score ?? 0;
+  const total2 = game.team2_score ?? 0;
+
+  function renderName(pid: string, winHighlight: boolean) {
+    const isSalidor = game.salidor_player_id === pid;
+    return (
+      <span
+        className={[
+          isSalidor ? "underline decoration-amber-400 decoration-2 underline-offset-4" : "",
+          winHighlight ? "text-primary" : "",
+        ].filter(Boolean).join(" ") || undefined}
+      >
+        {playerName(pid)}
+      </span>
+    );
+  }
+
+  return (
+    <div>
+      {/* ── Clickable header (matches admin layout) ───────────────── */}
+      <div
+        className="flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left hover:bg-surface-hover/50"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted">Mesa {game.table_number}</span>
+            {done && (
+              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                Completado
+              </span>
+            )}
+            {game.status === "in_progress" && (
+              <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
+                En juego · {hands.length} mano{hands.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-sm sm:gap-3">
+            <span className="min-w-0 flex-1 text-right font-medium">
+              {renderName(game.team1_player1, done && total1 > total2)}{" & "}
+              {renderName(game.team1_player2, done && total1 > total2)}
+            </span>
+            <span
+              className={`shrink-0 rounded px-2.5 py-0.5 font-mono text-sm font-semibold ${
+                done
+                  ? "bg-primary/10 text-primary"
+                  : hasHands
+                    ? "bg-accent/10 text-accent"
+                    : "bg-surface-hover text-muted"
+              }`}
+            >
+              {total1} - {total2}
+            </span>
+            <span className="min-w-0 flex-1 font-medium">
+              {renderName(game.team2_player1, done && total2 > total1)}{" & "}
+              {renderName(game.team2_player2, done && total2 > total1)}
+            </span>
+          </div>
+        </div>
+        {/* Chevron */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className={`mt-1 h-4 w-4 shrink-0 text-muted transition-transform ${expanded ? "rotate-180" : ""}`}
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </div>
+
+      {/* ── Collapsible body (read-only hand history) ─────────────── */}
+      {expanded && hasHands && (
+        <div className="border-t border-border/50 px-4 pb-3 pt-2">
+          <div className="space-y-1">
+            {hands.map((h) => (
+              <div key={h.id} className="flex items-center justify-center gap-4 text-xs text-muted">
+                <span className="w-8 text-right font-mono">M{h.hand_number}</span>
+                <span className={`w-10 text-right font-mono ${h.team1_points > 0 ? "font-semibold text-foreground" : ""}`}>
+                  +{h.team1_points}
+                </span>
+                <span className={`w-10 font-mono ${h.team2_points > 0 ? "font-semibold text-foreground" : ""}`}>
+                  +{h.team2_points}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
