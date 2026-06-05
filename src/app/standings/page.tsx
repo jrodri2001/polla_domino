@@ -10,6 +10,7 @@ interface AllTimeStats {
   played: number;
   wins: number;
   losses: number;
+  gameDiff: number;
   winRate: number;
   pf: number;
   pa: number;
@@ -49,6 +50,7 @@ export default async function StandingsPage() {
           played: 0,
           wins: 0,
           losses: 0,
+          gameDiff: 0,
           winRate: 0,
           pf: 0,
           pa: 0,
@@ -106,6 +108,7 @@ export default async function StandingsPage() {
       }
 
       for (const [pid, s] of map) {
+        s.gameDiff = s.wins - s.losses;
         s.diff = s.pf - s.pa;
         s.winRate = s.played > 0 ? s.wins / s.played : 0;
         s.tournaments = playerTournaments.get(pid)?.size ?? 0;
@@ -115,9 +118,9 @@ export default async function StandingsPage() {
         .filter((s) => s.played > 0)
         .sort(
           (a, b) =>
-            b.wins - a.wins ||
-            b.winRate - a.winRate ||
+            b.gameDiff - a.gameDiff ||
             b.diff - a.diff ||
+            b.winRate - a.winRate ||
             b.pf - a.pf,
         );
     }
@@ -159,6 +162,7 @@ export default async function StandingsPage() {
                 <th className="px-3 py-3 text-center font-medium sm:px-4">PJ</th>
                 <th className="px-3 py-3 text-center font-medium sm:px-4">G</th>
                 <th className="px-3 py-3 text-center font-medium sm:px-4">P</th>
+                <th className="px-3 py-3 text-center font-medium sm:px-4">DJ</th>
                 <th className="px-3 py-3 text-center font-medium sm:px-4">%G</th>
                 <th className="px-3 py-3 text-center font-medium sm:px-4">PF</th>
                 <th className="px-3 py-3 text-center font-medium sm:px-4">PC</th>
@@ -199,6 +203,17 @@ export default async function StandingsPage() {
                   <td className="px-3 py-3 text-center text-danger sm:px-4">
                     {s.losses}
                   </td>
+                  <td
+                    className={`px-3 py-3 text-center font-mono font-semibold sm:px-4 ${
+                      s.gameDiff > 0
+                        ? "text-primary"
+                        : s.gameDiff < 0
+                          ? "text-danger"
+                          : "text-muted"
+                    }`}
+                  >
+                    {s.gameDiff > 0 ? `+${s.gameDiff}` : s.gameDiff}
+                  </td>
                   <td className="px-3 py-3 text-center font-mono sm:px-4">
                     {(s.winRate * 100).toFixed(0)}%
                   </td>
@@ -225,10 +240,8 @@ export default async function StandingsPage() {
       {/* Column legend */}
       {standings.length > 0 && (
         <p className="text-xs text-muted">
-          T = Torneos &middot; PJ = Partidos jugados &middot; G = Ganados
-          &middot; P = Perdidos &middot; %G = Porcentaje de victorias &middot;
-          PF = Puntos a favor &middot; PC = Puntos en contra &middot; DIF =
-          Diferencial
+          Ordenado por diferencia de juegos (DJ), luego diferencial de puntos (DIF), porcentaje de victorias (%G) y puntos a favor (PF). <br />
+          T = Torneos &middot; PJ = Partidos jugados &middot; G = Ganados &middot; P = Perdidos &middot; DJ = Diferencia de Juegos (G - P) &middot; %G = Porcentaje de victorias &middot; PF = Puntos a favor &middot; PC = Puntos en contra &middot; DIF = Diferencial de puntos
         </p>
       )}
     </div>
