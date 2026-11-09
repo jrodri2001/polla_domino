@@ -1,17 +1,17 @@
 # Polla Domino
 
 Tournament management system for Venezuelan-style dominoes. Generates fair
-matchups, tracks scores in real-time, and computes a live leaderboard.
+matchups, tracks scores, and computes live leaderboards.
 
 ## Features
 
-- **Player registry** — add players by name and email.
-- **Tournament setup** — pick active players, set the number of physical tables.
-- **Fair matchmaking algorithm** — every player plays the exact same number of
-  games; byes (descansos) are distributed evenly; for 7+ players a balanced
-  random subset is generated instead of exhausting every combination.
-- **Live scorekeeping** — admin enters scores per game.
-- **Real-time leaderboard** — standings update instantly via Supabase Realtime.
+- **Player registry** — players can create accounts with a name and email.
+- **Tournament setup** — choose active players and the number of tables.
+- **Fair matchmaking** — distribute games and byes evenly, while minimizing
+  repeated partnerships and opponents.
+- **Live scorekeeping** — admins enter scores and hand-by-hand results.
+- **Live updates** — tournament and leaderboard pages receive updates over
+  Server-Sent Events (SSE).
 
 ## Tech Stack
 
@@ -20,55 +20,70 @@ matchups, tracks scores in real-time, and computes a live leaderboard.
 | Framework | Next.js (App Router) |
 | Language | TypeScript |
 | Styling | Tailwind CSS 4 |
-| Database / Realtime | Supabase (Postgres + Realtime) |
+| Database | Local SQLite via `better-sqlite3` |
+| Live updates | In-process event emitter and SSE |
 
-## Data Model
+## Local Development
 
-```
-players            -- registered players
-tournaments        -- tournament sessions
-tournament_players -- junction (N:M)
-rounds             -- numbered rounds per tournament
-games              -- 1 game per table per round (teams + scores)
-byes               -- players resting per round
-```
-
-Full SQL schema: `supabase/migrations/001_initial.sql`
-
-## Setup
-
-### 1. Create a Supabase project
-
-Go to https://supabase.com and create a free project.
-
-### 2. Run the migration
-
-Open the **SQL Editor** in your Supabase dashboard and paste the contents of
-`supabase/migrations/001_initial.sql`. Execute.
-
-### 3. Enable Realtime
-
-In the Supabase dashboard go to **Database > Replication** and make sure the
-`games` table is included in the `supabase_realtime` publication (the migration
-does this, but verify).
-
-### 4. Configure environment
-
-```bash
-cp .env.local.example .env.local
-```
-
-Fill in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from
-your Supabase project settings > API.
-
-### 5. Install and run
+Requirements: Node.js and npm.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000. The app creates `data/polla.db` and its tables
+automatically on first run; no external database or SQL setup is needed. The
+database is stored relative to the project directory and is excluded from Git.
+Keep this file to preserve your players, tournaments, and results.
+
+You can optionally create `.env.local` in the project root:
+
+```dotenv
+AUTH_SECRET=replace-with-a-private-random-secret
+
+# Optional: enable Google sign-in
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+```
+
+Set a private `AUTH_SECRET` for deployments. For Google sign-in, configure the
+OAuth redirect URI as `https://your-domain/auth/callback` (or
+`http://localhost:3000/auth/callback` for local development).
+
+New accounts have the player role. To enable tournament administration on a
+fresh installation, assign the `admin` role to the desired account's row in
+the local `players` table.
+
+## Running in Production
+
+```bash
+npm run build
+npm start
+```
+
+Run the app from a directory with persistent, writable storage so
+`data/polla.db` survives restarts and deployments. The database is local to the
+server, so use a single Node.js process/instance: the in-process event emitter
+used for live updates does not synchronize across multiple processes or hosts.
+Back up the SQLite database before replacing or removing it.
+
+## Data Model
+
+SQLite tables are initialized by `src/lib/db.ts`:
+
+```
+players            -- registered players and account roles
+tournaments        -- tournament sessions
+tournament_players -- players assigned to each tournament
+rounds             -- numbered rounds per tournament
+games              -- games per table and round (teams + scores)
+byes               -- players resting per round
+hands              -- hand-by-hand scores
+```
+
+The `supabase/` directory contains legacy SQL migrations; the application does
+not use them at runtime.
 
 ## Algorithm Overview
 
@@ -106,7 +121,8 @@ Run `npx tsx src/lib/algorithm.test.ts` to verify.
 | Route | Description |
 |-------|-------------|
 | `/` | Home — list of tournaments |
-| `/players` | Register and manage players |
-| `/admin` | Create a new tournament |
-| `/admin/tournament/[id]` | Generate schedule, enter scores |
-| `/leaderboard/[id]` | Real-time leaderboard |
+| `/players` | View and manage players |
+| `/admin` | Create a tournament |
+| `/admin/tournament/[id]` | Generate schedules and enter scores |
+| `/leaderboard/[id]` | Tournament leaderboard |
+| `/standings` | All-time standings |
