@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
+import { getTournamentLeaderboardData } from "@/lib/actions";
 import type { Tournament, Player, Game, Bye, Round, UserRole, Hand } from "@/lib/types";
 
 interface Standing {
@@ -28,108 +28,33 @@ export default function LeaderboardPage() {
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
 
   useEffect(() => {
-    const sb = createClient();
-    let authDone = false;
-
     async function fetchAll() {
-      // Check user role once — skip on realtime re-fetches
-      if (!authDone) {
-        const { data: { user } } = await sb.auth.getUser();
-        if (user) {
-          const { data: me } = await sb
-            .from("players")
-            .select("id, role")
-            .eq("auth_id", user.id)
-            .single();
-          setUserRole((me?.role as UserRole) ?? "player");
-          setMyPlayerId(me?.id ?? null);
-        }
-        authDone = true;
-      }
-
-      const { data: t } = await sb
-        .from("tournaments")
-        .select("*")
-        .eq("id", id)
-        .single();
-      if (!t) return;
-      setTournament(t);
-
-      const { data: tp } = await sb
-        .from("tournament_players")
-        .select("player_id")
-        .eq("tournament_id", id);
-      const pIds = (tp ?? []).map((r) => r.player_id);
-      if (pIds.length > 0) {
-        const { data: pData } = await sb
-          .from("players")
-          .select("id, name, email, active, auth_id, role, created_at")
-          .in("id", pIds);
-        const map = new Map<string, Player>();
-        for (const p of pData ?? []) map.set(p.id, p);
-        setPlayers(map);
-      }
-
-      const { data: rData } = await sb
-        .from("rounds")
-        .select("id, tournament_id, round_number")
-        .eq("tournament_id", id)
-        .order("round_number");
-      setRounds(rData ?? []);
-      if (rData && rData.length > 0) {
-        const roundIds = rData.map((r) => r.id);
-        const [{ data: gData }, { data: bData }] = await Promise.all([
-          sb.from("games").select("*").in("round_id", roundIds),
-          sb.from("byes").select("*").in("round_id", roundIds),
-        ]);
-        setGames(gData ?? []);
-        setByes(bData ?? []);
-
-        // Fetch hands for all games
-        const allGames = gData ?? [];
-        if (allGames.length > 0) {
-          const gameIds = allGames.map((g) => g.id);
-          const { data: hData } = await sb
-            .from("hands")
-            .select("*")
-            .in("game_id", gameIds)
-            .order("hand_number");
-          const hMap = new Map<string, Hand[]>();
-          for (const h of hData ?? []) {
-            const arr = hMap.get(h.game_id) ?? [];
-            arr.push(h);
-            hMap.set(h.game_id, arr);
-          }
-          setHandsMap(hMap);
-        } else {
-          setHandsMap(new Map());
-        }
-      }
+      const data = await getTournamentLeaderboardData(id);
+      if (!data) return;
+      setTournament(data.tournament);
+      setPlayers(new Map(Object.entries(data.players)));
+      setRounds(data.rounds);
+      setGames(data.games);
+      setByes(data.byes);
+      setHandsMap(new Map(Object.entries(data.handsMap)));
+      setUserRole(data.userRole as UserRole);
+      setMyPlayerId(data.myPlayerId);
     }
-
-    const channelName = `leaderboard-${id}`;
-    // Remove any stale channel from a previous mount (singleton client persists channels)
-    const existing = sb.getChannels().find((c) => c.topic === `realtime:${channelName}`);
-    if (existing) sb.removeChannel(existing);
-
-    const channel = sb
-      .channel(channelName)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "games" },
-        () => fetchAll(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "hands" },
-        () => fetchAll(),
-      )
-      .subscribe();
 
     fetchAll();
 
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(`/api/events?tournamentId=${id}`);
+      es.onmessage = () => {
+        fetchAll();
+      };
+    } catch {
+      // EventSource fallback
+    }
+
     return () => {
-      sb.removeChannel(channel);
+      es?.close();
     };
   }, [id]);
 

@@ -16,6 +16,7 @@ export default function LoginPage() {
 function LoginForm() {
   const searchParams = useSearchParams();
   const prefillEmail = searchParams.get("email") ?? "";
+  const oauthError = searchParams.get("error");
   const [state, formAction, pending] = useActionState<AuthActionState, FormData>(
     signIn,
     null,
@@ -30,6 +31,17 @@ function LoginForm() {
             Ingresa a tu cuenta de Polla Dominó
           </p>
         </div>
+
+        {oauthError === "google_not_configured" && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-400">
+            Google OAuth no está configurado aún. Inicia sesión con tu email y contraseña.
+          </div>
+        )}
+        {oauthError === "oauth" && (
+          <div className="rounded-lg border border-danger/30 bg-danger/10 p-3 text-xs text-danger">
+            Error en la autenticación con Google. Intenta nuevamente.
+          </div>
+        )}
 
         <form action={formAction} className="space-y-4">
           <div>

@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { updateTournament } from "@/lib/actions";
+import { updateTournament, getTournamentForEdit } from "@/lib/actions";
 
 interface PlayerData {
   id: string;
@@ -24,48 +23,13 @@ export default function EditTournamentPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-
-    // Fetch tournament details
-    supabase
-      .from("tournaments")
-      .select("name, table_count")
-      .eq("id", id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setName(data.name);
-          setTableCount(data.table_count);
-        }
-      });
-
-    // Fetch tournament players and active players in parallel, then intersect
-    Promise.all([
-      supabase
-        .from("tournament_players")
-        .select("player_id")
-        .eq("tournament_id", id),
-      supabase
-        .from("players")
-        .select("id, name, email, tournament_players(count)")
-        .not("auth_id", "is", null)
-        .eq("active", true)
-        .order("name"),
-    ]).then(([tpResult, pResult]) => {
-      const mapped: PlayerData[] = (pResult.data ?? []).map((p) => ({
-        id: p.id as string,
-        name: (p.name as string) ?? "",
-        email: (p.email as string) ?? "",
-        tournamentCount:
-          (p.tournament_players as unknown as { count: number }[])?.[0]
-            ?.count ?? 0,
-      }));
-      setPlayers(mapped);
-
-      // Only pre-select players that are still active (in the loaded pool)
-      const activeIds = new Set(mapped.map((p) => p.id));
-      const tpIds = (tpResult.data ?? []).map((r) => r.player_id);
-      setSelected(new Set(tpIds.filter((pid) => activeIds.has(pid))));
+    getTournamentForEdit(id).then((res) => {
+      if (res.tournament) {
+        setName(res.tournament.name);
+        setTableCount(res.tournament.table_count);
+      }
+      setPlayers(res.players);
+      setSelected(new Set(res.selectedPlayerIds));
     });
   }, [id]);
 

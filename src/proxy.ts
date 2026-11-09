@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createProxyClient } from "@/lib/supabase/proxy";
+import { verifySession, SESSION_COOKIE_NAME } from "@/lib/jwt";
 
-const PUBLIC_ROUTES = ["/login", "/signup", "/auth/callback", "/forgot-password", "/reset-password"];
+const PUBLIC_ROUTES = [
+  "/login",
+  "/signup",
+  "/auth/callback",
+  "/forgot-password",
+  "/reset-password",
+  "/api/events",
+];
 const ADMIN_ROUTES = ["/admin", "/players"];
 
 export async function proxy(request: NextRequest) {
@@ -13,33 +20,38 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const response = NextResponse.next({ request });
-  const supabase = createProxyClient(request, response);
+  const host =
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host") ||
+    request.nextUrl.host ||
+    "polla.juliorodriguez.ca";
+  const proto =
+    request.headers.get("x-forwarded-proto") ||
+    (host.includes("localhost") ? "http" : "https");
+  const origin = `${proto}://${host}`;
 
-  // Refresh the session — this keeps the auth token alive
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    const loginUrl = new URL("/login", request.url);
+  const token = request.cookies.get(SESSION_COOKIE_NAME)?.value;
+  if (!token) {
+    const loginUrl = new URL("/login", origin);
     return NextResponse.redirect(loginUrl);
+  }
+
+  const payload = await verifySession(token);
+  if (!payload) {
+    const loginUrl = new URL("/login", origin);
+    const response = NextResponse.redirect(loginUrl);
+    response.cookies.delete(SESSION_COOKIE_NAME);
+    return response;
   }
 
   // Check admin routes
   if (ADMIN_ROUTES.some((r) => pathname.startsWith(r))) {
-    const { data: player } = await supabase
-      .from("players")
-      .select("role")
-      .eq("auth_id", user.id)
-      .single();
-
-    if (player?.role !== "admin") {
-      return NextResponse.redirect(new URL("/", request.url));
+    if (payload.role !== "admin") {
+      return NextResponse.redirect(new URL("/", origin));
     }
   }
 
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {

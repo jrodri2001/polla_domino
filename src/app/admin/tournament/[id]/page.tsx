@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import {
   generateTournamentSchedule,
   addHandScore,
@@ -14,6 +13,8 @@ import {
   setSalidor,
   completeTournament,
   renameTournament,
+  deleteTournament,
+  getTournamentAdminData,
 } from "@/lib/actions";
 import type { Tournament, Player, Round, Game, Bye, Hand } from "@/lib/types";
 
@@ -24,6 +25,7 @@ interface FullRound extends Round {
 
 export default function TournamentDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [players, setPlayers] = useState<Map<string, Player>>(new Map());
   const [playerOrder, setPlayerOrder] = useState<string[]>([]);
@@ -34,108 +36,36 @@ export default function TournamentDetailPage() {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const refreshRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
-    const sb = createClient();
-
     async function fetchAll() {
-      const { data: t } = await sb
-        .from("tournaments")
-        .select("*")
-        .eq("id", id)
-        .single();
-      if (!t) return;
-      setTournament(t);
-
-      let tp = await sb
-        .from("tournament_players")
-        .select("player_id, sort_order")
-        .eq("tournament_id", id)
-        .order("sort_order");
-      // Fallback if sort_order column doesn't exist yet
-      if (tp.error) {
-        tp = await sb
-          .from("tournament_players")
-          .select("player_id, sort_order")
-          .eq("tournament_id", id) as typeof tp;
-      }
-      const pIds = (tp.data ?? []).map((r) => r.player_id);
-      setPlayerOrder(pIds);
-      if (pIds.length > 0) {
-        const { data: pData } = await sb
-          .from("players")
-          .select("id, name, email, active, auth_id, role, created_at")
-          .in("id", pIds);
-        const map = new Map<string, Player>();
-        for (const p of pData ?? []) map.set(p.id, p);
-        setPlayers(map);
-      }
-
-      const { data: rData } = await sb
-        .from("rounds")
-        .select("*")
-        .eq("tournament_id", id)
-        .order("round_number");
-
-      if (rData && rData.length > 0) {
-        const roundIds = rData.map((r) => r.id);
-        const [{ data: gData }, { data: bData }] = await Promise.all([
-          sb.from("games").select("*").in("round_id", roundIds),
-          sb.from("byes").select("*").in("round_id", roundIds),
-        ]);
-        const allGames = gData ?? [];
-        setRounds(
-          rData.map((r) => ({
-            ...r,
-            games: allGames.filter((g) => g.round_id === r.id),
-            byes: (bData ?? []).filter((b) => b.round_id === r.id),
-          })),
-        );
-
-        // Fetch hands for all games
-        if (allGames.length > 0) {
-          const gameIds = allGames.map((g) => g.id);
-          const { data: hData } = await sb
-            .from("hands")
-            .select("*")
-            .in("game_id", gameIds)
-            .order("hand_number");
-          const hMap = new Map<string, Hand[]>();
-          for (const h of hData ?? []) {
-            const arr = hMap.get(h.game_id) ?? [];
-            arr.push(h);
-            hMap.set(h.game_id, arr);
-          }
-          setHandsMap(hMap);
-        } else {
-          setHandsMap(new Map());
-        }
-      } else {
-        setRounds([]);
-        setHandsMap(new Map());
-      }
+      const data = await getTournamentAdminData(id);
+      if (!data) return;
+      setTournament(data.tournament);
+      setPlayerOrder(data.playerOrder);
+      setPlayers(new Map(Object.entries(data.players)));
+      setRounds(data.rounds);
+      setHandsMap(new Map(Object.entries(data.handsMap)));
     }
 
     refreshRef.current = fetchAll;
     fetchAll();
 
-    const channel = sb
-      .channel(`tournament-${id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "games" },
-        () => fetchAll(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "hands" },
-        () => fetchAll(),
-      )
-      .subscribe();
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(`/api/events?tournamentId=${id}`);
+      es.onmessage = () => {
+        fetchAll();
+      };
+    } catch {
+      // EventSource fallback
+    }
 
     return () => {
-      sb.removeChannel(channel);
+      es?.close();
     };
   }, [id]);
 
@@ -169,6 +99,18 @@ export default function TournamentDetailPage() {
   async function handleRegenerate() {
     if (!confirm("Se borrarán todos los emparejamientos actuales y se generarán nuevos. ¿Continuar?")) return;
     await handleGenerate();
+  }
+
+  async function handleCancelTournament() {
+    setCanceling(true);
+    const res = await deleteTournament(id);
+    if (res.error) {
+      alert(res.error);
+      setCanceling(false);
+      setShowCancelConfirm(false);
+    } else {
+      router.push("/");
+    }
   }
 
   function playerName(pid: string) {
@@ -240,7 +182,7 @@ export default function TournamentDetailPage() {
             {rounds.length} rondas
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {tournament.status !== "setup" && (
             <Link
               href={`/leaderboard/${id}`}
@@ -266,6 +208,13 @@ export default function TournamentDetailPage() {
               Finalizar Torneo
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setShowCancelConfirm(true)}
+            className="rounded-lg border border-danger/40 bg-danger/10 px-4 py-2 text-sm font-medium text-danger hover:bg-danger/20 hover:border-danger transition"
+          >
+            Cancelar Torneo
+          </button>
         </div>
       </div>
 
@@ -395,6 +344,45 @@ export default function TournamentDetailPage() {
           </div>
         </div>
       ))}
+
+      {/* ── Cancel Tournament Confirmation Modal ────────────────────── */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-xl border border-danger/40 bg-surface p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-danger">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <h3 className="text-lg font-bold text-foreground">¿Cancelar y Eliminar Torneo?</h3>
+            </div>
+            <p className="text-sm text-muted">
+              ¿Estás seguro de que deseas cancelar el torneo{" "}
+              <strong className="text-foreground">&ldquo;{tournament.name}&rdquo;</strong>?
+            </p>
+            <div className="rounded-lg bg-danger/10 border border-danger/20 p-3 text-xs text-danger leading-relaxed">
+              ⚠️ Esta acción eliminará permanentemente todos los emparejamientos, mesas, manos y resultados registrados de este torneo. No se puede deshacer.
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(false)}
+                disabled={canceling}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-surface-hover hover:text-foreground"
+              >
+                Volver
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelTournament}
+                disabled={canceling}
+                className="rounded-lg bg-danger px-4 py-2 text-sm font-medium text-white hover:bg-danger/90 disabled:opacity-50"
+              >
+                {canceling ? "Cancelando..." : "Sí, Cancelar Torneo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

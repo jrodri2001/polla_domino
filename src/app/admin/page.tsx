@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { createTournament } from "@/lib/actions";
+import { createTournament, getPlayersForNewTournament } from "@/lib/actions";
 
 interface PlayerData {
   id: string;
@@ -21,24 +20,9 @@ export default function NewTournamentPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("players")
-      .select("id, name, email, tournament_players(count)")
-      .not("auth_id", "is", null)
-      .eq("active", true)
-      .order("name")
-      .then(({ data }) => {
-        const mapped: PlayerData[] = (data ?? []).map((p) => ({
-          id: p.id as string,
-          name: (p.name as string) ?? "",
-          email: (p.email as string) ?? "",
-          tournamentCount:
-            (p.tournament_players as unknown as { count: number }[])?.[0]
-              ?.count ?? 0,
-        }));
-        setPlayers(mapped);
-      });
+    getPlayersForNewTournament().then(({ players }) => {
+      setPlayers(players);
+    });
   }, []);
 
   const toggle = useCallback((id: string) => {

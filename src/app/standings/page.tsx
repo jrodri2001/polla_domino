@@ -1,6 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import type { Player } from "@/lib/types";
+import type { Player, Game, Hand } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -38,29 +38,30 @@ export default async function StandingsPage() {
   let mostZapatosReceived: { players: Player[]; value: number } | null = null;
 
   try {
-    const supabase = await createClient();
+    const rawPlayers = db.prepare("SELECT * FROM players").all() as Record<string, unknown>[];
+    const players: Player[] = rawPlayers.map((p) => ({
+      id: p.id as string,
+      name: p.name as string,
+      email: p.email as string,
+      active: Boolean(p.active),
+      auth_id: (p.auth_id as string) ?? null,
+      role: (p.role as "admin" | "player") ?? "player",
+      created_at: p.created_at as string,
+    }));
 
-    const [
-      { data: players, error: pErr },
-      { data: games, error: gErr },
-      { data: hands, error: hErr },
-    ] = await Promise.all([
-      supabase
-        .from("players")
-        .select("*")
-        .not("auth_id", "is", null),
-      supabase
-        .from("games")
-        .select("*, round:rounds(tournament_id)")
-        .eq("status", "completed"),
-      supabase
-        .from("hands")
-        .select("*"),
-    ]);
+    const rawGames = db.prepare(`
+      SELECT g.*, r.tournament_id
+      FROM games g
+      JOIN rounds r ON r.id = g.round_id
+      WHERE g.status = 'completed'
+    `).all() as (Game & { tournament_id: string })[];
 
-    if (pErr) dbError = pErr.message;
-    if (gErr) dbError = gErr.message;
-    if (hErr) dbError = hErr.message;
+    const games = rawGames.map((g) => ({
+      ...g,
+      round: { tournament_id: g.tournament_id },
+    }));
+
+    const hands = db.prepare("SELECT * FROM hands").all() as Hand[];
 
     if (players && games) {
       const map = new Map<string, AllTimeStats>();
@@ -239,7 +240,7 @@ export default async function StandingsPage() {
       }
 
       standings = [...map.values()]
-        .filter((s) => s.played > 0)
+        .filter((s) => s.played > 0 && s.player.active && s.player.id !== "deleted-player")
         .sort(
           (a, b) =>
             b.gameDiff - a.gameDiff ||
@@ -408,7 +409,7 @@ export default async function StandingsPage() {
               {standings.map((s, i) => (
                 <tr
                   key={s.player.id}
-                  className={`hover:bg-surface-hover ${!s.player.active ? "opacity-50" : ""} ${s.player.id === myPlayerId ? "bg-accent/10 ring-1 ring-inset ring-accent/30" : i < 3 ? "bg-primary/5" : ""}`}
+                  className={`hover:bg-surface-hover ${s.player.id === myPlayerId ? "bg-accent/10 ring-1 ring-inset ring-accent/30" : i < 3 ? "bg-primary/5" : ""}`}
                 >
                   <td className="px-3 py-3 text-center font-bold sm:px-4">
                     {i === 0
@@ -421,9 +422,6 @@ export default async function StandingsPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-3 font-medium sm:px-4">
                     {s.player.name}
-                    {!s.player.active && (
-                      <span className="ml-1.5 text-xs text-danger">(inactivo)</span>
-                    )}
                     {s.player.id === myPlayerId && (
                       <span className="ml-1.5 text-xs text-accent">(tú)</span>
                     )}

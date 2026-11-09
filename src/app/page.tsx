@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import type { Tournament } from "@/lib/types";
 import DeleteTournamentButton from "@/components/DeleteTournamentButton";
@@ -16,19 +16,29 @@ export default async function Home() {
 
   let tournaments: TournamentWithPlayerCount[] = [];
   try {
-    const supabase = await createClient();
-    // RLS automatically filters: admins see all, players see only their tournaments
-    const { data } = await supabase
-      .from("tournaments")
-      .select("*, tournament_players(count)")
-      .order("created_at", { ascending: false });
-    tournaments = (data ?? []).map((t) => ({
-      ...t,
-      playerCount: (t.tournament_players as unknown as { count: number }[])?.[0]
-        ?.count ?? 0,
-    }));
-  } catch {
-    // Supabase not configured
+    if (isAdmin) {
+      tournaments = db
+        .prepare(`
+          SELECT t.*,
+            (SELECT COUNT(*) FROM tournament_players tp WHERE tp.tournament_id = t.id) as playerCount
+          FROM tournaments t
+          ORDER BY t.created_at DESC
+        `)
+        .all() as TournamentWithPlayerCount[];
+    } else if (session?.playerId) {
+      tournaments = db
+        .prepare(`
+          SELECT t.*,
+            (SELECT COUNT(*) FROM tournament_players tp WHERE tp.tournament_id = t.id) as playerCount
+          FROM tournaments t
+          JOIN tournament_players me ON me.tournament_id = t.id
+          WHERE me.player_id = ?
+          ORDER BY t.created_at DESC
+        `)
+        .all(session.playerId) as TournamentWithPlayerCount[];
+    }
+  } catch (err) {
+    console.error("Error loading tournaments:", err);
   }
 
   const statusLabel: Record<string, string> = {
@@ -186,7 +196,7 @@ function TournamentCard({
       ? `/admin/tournament/${t.id}`
       : `/leaderboard/${t.id}`;
 
-  const canDelete = isAdmin && (t.status === "completed" || t.status === "setup");
+  const canDelete = isAdmin;
 
   return (
     <div
